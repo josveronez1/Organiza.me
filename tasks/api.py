@@ -15,8 +15,10 @@ class TaskIn(Schema):
     due_date: Optional[date] = None
 
 @router.get("/")
-def list_tasks(request):
+def list_tasks(request, stage_id: int = None):
     tasks = Task.objects.all()
+    if stage_id:
+        tasks = tasks.filter(stage_id=stage_id)
     return list (tasks.values())
 
 @router.post("/")
@@ -60,8 +62,10 @@ class TagIn(Schema):
     workspace_id: int
 
 @router.get("/tags/")
-def list_tags(request):
+def list_tags(request, workspace_id: int = None):
     tags = Tag.objects.all()
+    if workspace_id:
+        tags = tags.filter(workspace_id=workspace_id)
     return list (tags.values())
 
 @router.post("/tags/")
@@ -100,8 +104,10 @@ class SubtaskIn(Schema):
     position: int = 0
 
 @router.get("/subtasks/")
-def list_subtasks(request):
+def list_subtasks(request, task_id: int = None):
     subtasks = Subtask.objects.all()
+    if task_id:
+        subtasks = subtasks.filter(task_id=task_id)
     return list (subtasks.values())
 
 @router.post("/subtasks/")
@@ -142,8 +148,10 @@ class AttachmentIn(Schema):
     task_id: int
 
 @router.get("/attachments/")
-def list_attachments(request):
+def list_attachments(request, task_id: int = None):
     attachments = Attachment.objects.all()
+    if task_id:
+        attachments = attachments.filter(task_id=task_id)
     return list (attachments.values())
 
 @router.post("/attachments/")

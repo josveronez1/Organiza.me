@@ -11,8 +11,10 @@ class StageIn(Schema):
     color: str = "#6B7280"
 
 @router.get("/stages/")
-def list_stages(request):
+def list_stages(request, board_id: int = None):
     stages = Stage.objects.all()
+    if board_id:
+        stages = stages.filter(board_id=board_id)
     return list (stages.values())
 
 @router.post("/stages/")
@@ -52,8 +54,10 @@ class BoardIn(Schema):
     position: int = 0
 
 @router.get("/")
-def list_boards(request):
+def list_boards(request, workspace_id: int = None):
     boards = Board.objects.all()
+    if workspace_id:
+        boards = boards.filter(workspace_id=workspace_id)
     return list (boards.values())
 
 @router.post("/")
