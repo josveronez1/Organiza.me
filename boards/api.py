@@ -4,46 +4,6 @@ from django.shortcuts import get_object_or_404
 
 router = Router()
 
-class BoardIn(Schema):
-    name: str
-    workspace_id: int
-    position: int = 0
-
-@router.get("/")
-def list_boards(request):
-    boards = Board.objects.all()
-    return list (boards.values())
-
-@router.post("/")
-def create_board(request, data: BoardIn):
-    board = Board.objects.create(**data.dict())
-    return {"id": board.id , "name": board.name}
-
-@router.get("/{board_id}/")
-def get_board(request, board_id: int):
-    board = get_object_or_404(Board, id=board_id)
-    return {
-        "id": board.id,
-        "name": board.name,
-        "workspace": board.workspace_id,
-        "position": board.position,
-        "created_at": board.created_at
-    }
-
-@router.put("/{board_id}/")
-def update_board(request, board_id: int, data: BoardIn):
-    board = get_object_or_404(Board, id=board_id)
-    board.name = data.name
-    board.position = data.position
-    board.save()
-    return{"success": True}
-
-@router.delete("/{board_id}/")
-def delete_board(request, board_id: int):
-    board = get_object_or_404(Board, id=board_id)
-    board.delete()
-    return {"success": True}
-
 class StageIn(Schema):
     name: str
     board_id: int
@@ -84,4 +44,44 @@ def update_stage(request, stage_id: int, data: StageIn):
 def delete_stage(request, stage_id: int):
     stage = get_object_or_404(Stage, id=stage_id)
     stage.delete()
+    return {"success": True}
+
+class BoardIn(Schema):
+    name: str
+    workspace_id: int
+    position: int = 0
+
+@router.get("/")
+def list_boards(request):
+    boards = Board.objects.all()
+    return list (boards.values())
+
+@router.post("/")
+def create_board(request, data: BoardIn):
+    board = Board.objects.create(**data.dict())
+    return {"id": board.id , "name": board.name}
+
+@router.get("/{board_id}/")
+def get_board(request, board_id: int):
+    board = get_object_or_404(Board, id=board_id)
+    return {
+        "id": board.id,
+        "name": board.name,
+        "workspace": board.workspace_id,
+        "position": board.position,
+        "created_at": board.created_at
+    }
+
+@router.put("/{board_id}/")
+def update_board(request, board_id: int, data: BoardIn):
+    board = get_object_or_404(Board, id=board_id)
+    board.name = data.name
+    board.position = data.position
+    board.save()
+    return{"success": True}
+
+@router.delete("/{board_id}/")
+def delete_board(request, board_id: int):
+    board = get_object_or_404(Board, id=board_id)
+    board.delete()
     return {"success": True}
