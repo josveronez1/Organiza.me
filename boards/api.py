@@ -1,5 +1,6 @@
 from ninja import Router, Schema
 from .models import Board, Stage
+from workspaces.models import Workspace
 from django.shortcuts import get_object_or_404
 
 router = Router()
@@ -12,19 +13,20 @@ class StageIn(Schema):
 
 @router.get("/stages/")
 def list_stages(request, board_id: int = None):
-    stages = Stage.objects.all()
+    stages = Stage.objects.filter(board__workspace__owner_uid=request.auth).order_by('position')
     if board_id:
         stages = stages.filter(board_id=board_id)
     return list (stages.values())
 
 @router.post("/stages/")
 def create_stage(request, data: StageIn):
+    board = get_object_or_404(Board, id=data.board_id, workspace__owner_uid=request.auth)
     stage = Stage.objects.create(**data.dict())
     return {"id": stage.id, "name": stage.name}
 
 @router.get("/stages/{stage_id}/")
 def get_stage(request, stage_id: int):
-    stage = get_object_or_404(Stage, id=stage_id)
+    stage = get_object_or_404(Stage, id=stage_id, board__workspace__owner_uid=request.auth)
     return{
         "id": stage.id,
         "name": stage.name,
@@ -35,7 +37,7 @@ def get_stage(request, stage_id: int):
 
 @router.put("/stages/{stage_id}/")
 def update_stage(request, stage_id: int, data: StageIn):
-    stage = get_object_or_404(Stage, id=stage_id)
+    stage = get_object_or_404(Stage, id=stage_id, board__workspace__owner_uid=request.auth)
     stage.name = data.name 
     stage.position = data.position
     stage.color = data.color
@@ -44,7 +46,7 @@ def update_stage(request, stage_id: int, data: StageIn):
 
 @router.delete("/stages/{stage_id}/")
 def delete_stage(request, stage_id: int):
-    stage = get_object_or_404(Stage, id=stage_id)
+    stage = get_object_or_404(Stage, id=stage_id, board__workspace__owner_uid=request.auth)
     stage.delete()
     return {"success": True}
 
@@ -55,19 +57,20 @@ class BoardIn(Schema):
 
 @router.get("/")
 def list_boards(request, workspace_id: int = None):
-    boards = Board.objects.all()
+    boards = Board.objects.filter(workspace__owner_uid=request.auth).order_by('position')
     if workspace_id:
         boards = boards.filter(workspace_id=workspace_id)
     return list (boards.values())
 
 @router.post("/")
 def create_board(request, data: BoardIn):
+    workspace = get_object_or_404(Workspace, id=data.workspace_id, owner_uid=request.auth)
     board = Board.objects.create(**data.dict())
     return {"id": board.id , "name": board.name}
 
 @router.get("/{board_id}/")
 def get_board(request, board_id: int):
-    board = get_object_or_404(Board, id=board_id)
+    board = get_object_or_404(Board, id=board_id, workspace__owner_uid=request.auth)
     return {
         "id": board.id,
         "name": board.name,
@@ -78,7 +81,7 @@ def get_board(request, board_id: int):
 
 @router.put("/{board_id}/")
 def update_board(request, board_id: int, data: BoardIn):
-    board = get_object_or_404(Board, id=board_id)
+    board = get_object_or_404(Board, id=board_id, workspace__owner_uid=request.auth)
     board.name = data.name
     board.position = data.position
     board.save()
@@ -86,6 +89,6 @@ def update_board(request, board_id: int, data: BoardIn):
 
 @router.delete("/{board_id}/")
 def delete_board(request, board_id: int):
-    board = get_object_or_404(Board, id=board_id)
+    board = get_object_or_404(Board, id=board_id, workspace__owner_uid=request.auth)
     board.delete()
     return {"success": True}

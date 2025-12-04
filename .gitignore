@@ -1,1 +1,24 @@
+# Ambiente virtual
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Django
+db.sqlite3
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Ambiente
 .env
+.env.local
+
+# Mac
+.DS_Store
