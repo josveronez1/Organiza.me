@@ -8,18 +8,18 @@ def create_default_stages(sender, instance, created, **kwargs):
         Stage.objects.create(
             name="a_fazer",
             board=instance,
-            position="0",
+            position=0,
             color="#6B7280"
         )
         Stage.objects.create(
             name="fazendo",
             board=instance,
-            position="1",
+            position=1,
             color="#F59E0B"
         )
         Stage.objects.create(
             name="concluido",
             board=instance,
-            position="2",
+            position=2,
             color="#10B981"
         )
