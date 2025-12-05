@@ -7,6 +7,7 @@ import { useState, useRef, useEffect } from 'react'
 
 interface KanbanColumnProps {
   stage: Stage
+  stageName: string
   tasks: Task[]
   color: string
   onTaskClick: (task: Task) => void
@@ -14,7 +15,15 @@ interface KanbanColumnProps {
   onDeleteStage: () => void
 }
 
-export function KanbanColumn({ stage, tasks, color, onTaskClick, onAddTask, onDeleteStage }: KanbanColumnProps) {
+export function KanbanColumn({ 
+  stage, 
+  stageName, 
+  tasks, 
+  color, 
+  onTaskClick, 
+  onAddTask, 
+  onDeleteStage 
+}: KanbanColumnProps) {
   const [showMenu, setShowMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   
@@ -37,67 +46,67 @@ export function KanbanColumn({ stage, tasks, color, onTaskClick, onAddTask, onDe
 
   return (
     <div 
-      className={`
-        flex-shrink-0 w-80 flex flex-col 
-        bg-[var(--bg-raised)] 
-        rounded-xl 
-        border border-[var(--border-subtle)]
-        transition-all duration-200
-        ${isOver ? 'border-[var(--accent)] bg-[var(--bg-elevated)] shadow-lg shadow-[var(--accent-muted)]' : ''}
-      `}
+      className="kanban-column"
+      style={{ 
+        borderColor: isOver ? color : undefined,
+        borderWidth: isOver ? '2px' : '1px',
+        borderStyle: 'solid'
+      }}
     >
       {/* Column Header */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-[var(--border-subtle)]">
-        <div className="flex items-center gap-3">
+      <div className="kanban-column-header">
+        <div className="kanban-column-title">
           <div 
-            className="w-3 h-3 rounded-full shadow-sm" 
             style={{ 
-              backgroundColor: color,
-              boxShadow: `0 0 8px ${color}50`
-            }}
+              width: 8, 
+              height: 8, 
+              borderRadius: '50%', 
+              backgroundColor: color 
+            }} 
           />
-          <h3 className="font-medium text-[var(--text-primary)] text-sm tracking-tight">
-            {stage.name}
-          </h3>
-          <span className="badge">
-            {tasks.length}
-          </span>
+          <span className="kanban-column-name">{stageName}</span>
+          <span className="kanban-column-count">{tasks.length}</span>
         </div>
         
-        <div className="relative" ref={menuRef}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {/* Add Task Button - Visible in header */}
           <button
-            onClick={(e) => {
-              e.stopPropagation()
-              setShowMenu(!showMenu)
-            }}
-            className="btn btn-ghost btn-icon opacity-0 group-hover:opacity-100 hover:opacity-100 focus:opacity-100"
-            style={{ opacity: showMenu ? 1 : undefined }}
+            onClick={onAddTask}
+            className="btn btn-ghost btn-icon-sm"
+            title="Adicionar tarefa"
           >
-            <MoreHorizontal className="w-4 h-4" />
+            <Plus size={16} />
           </button>
 
-          {showMenu && (
-            <div className="absolute right-0 top-full mt-2 dropdown-menu z-50 animate-fade-in-scale">
-              <button
-                onClick={() => {
-                  setShowMenu(false)
-                  onDeleteStage()
-                }}
-                className="dropdown-item dropdown-item-danger"
-              >
-                <Trash2 className="w-4 h-4" />
-                Excluir coluna
-              </button>
-            </div>
-          )}
+          {/* Menu */}
+          <div style={{ position: 'relative' }} ref={menuRef}>
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="btn btn-ghost btn-icon-sm"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+
+            {showMenu && (
+              <div className="dropdown fade-in" style={{ right: 0, top: '100%', marginTop: 4 }}>
+                <button
+                  onClick={() => {
+                    setShowMenu(false)
+                    onDeleteStage()
+                  }}
+                  className="dropdown-item dropdown-item-danger"
+                >
+                  <Trash2 className="dropdown-item-icon" />
+                  Excluir coluna
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Tasks Container */}
-      <div 
-        ref={setNodeRef}
-        className="flex-1 p-3 overflow-y-auto min-h-[200px] space-y-2.5"
-      >
+      <div ref={setNodeRef} className="kanban-column-body">
         <SortableContext 
           items={tasks.map(t => t.id)} 
           strategy={verticalListSortingStrategy}
@@ -112,22 +121,17 @@ export function KanbanColumn({ stage, tasks, color, onTaskClick, onAddTask, onDe
         </SortableContext>
 
         {tasks.length === 0 && (
-          <div className="h-28 flex flex-col items-center justify-center text-center rounded-xl border-2 border-dashed border-[var(--border-default)] bg-[var(--bg-elevated)]/50 transition-colors">
-            <p className="text-sm text-[var(--text-quaternary)]">
-              Arraste tasks aqui
-            </p>
+          <div className="kanban-empty">
+            Arraste tarefas aqui
           </div>
         )}
       </div>
 
-      {/* Add Task Button */}
-      <div className="p-3 border-t border-[var(--border-subtle)]">
-        <button
-          onClick={onAddTask}
-          className="w-full p-3 rounded-xl bg-[var(--bg-elevated)] hover:bg-[var(--bg-surface)] border border-transparent hover:border-[var(--border-default)] transition-all duration-200 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] flex items-center justify-center gap-2 text-sm font-medium group"
-        >
-          <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-200" />
-          Adicionar Task
+      {/* Footer - Secondary add button */}
+      <div className="kanban-column-footer">
+        <button onClick={onAddTask} className="kanban-add-task">
+          <Plus size={14} />
+          Adicionar tarefa
         </button>
       </div>
     </div>

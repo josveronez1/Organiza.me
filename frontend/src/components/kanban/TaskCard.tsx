@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Task } from '../../types'
-import { Calendar, MessageSquare, Paperclip, CheckSquare } from 'lucide-react'
+import { Calendar } from 'lucide-react'
 import { format, isPast, isToday } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -29,9 +29,7 @@ export function TaskCard({ task, onClick, isDragging = false }: TaskCardProps) {
   const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date))
   const isDueToday = task.due_date && isToday(new Date(task.due_date))
 
-  const draggingStyles = isSortableDragging || isDragging 
-    ? 'opacity-90 rotate-[2deg] scale-[1.02] shadow-xl ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-base)]' 
-    : ''
+  const hasMeta = task.due_date || (task.tags && task.tags.length > 0)
 
   return (
     <div
@@ -40,88 +38,48 @@ export function TaskCard({ task, onClick, isDragging = false }: TaskCardProps) {
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className={`
-        group relative
-        bg-[var(--bg-elevated)] 
-        border border-[var(--border-subtle)]
-        rounded-xl 
-        p-4
-        cursor-pointer 
-        select-none
-        transition-all duration-200
-        hover:border-[var(--border-default)]
-        hover:bg-[var(--bg-surface)]
-        hover:shadow-md
-        active:scale-[0.98]
-        ${draggingStyles}
-      `}
+      className={`task-card ${isSortableDragging || isDragging ? 'dragging' : ''}`}
     >
-      {/* Accent line on hover */}
-      <div className="absolute left-0 top-3 bottom-3 w-0.5 bg-[var(--accent)] rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+      {/* Title */}
+      <div className="task-card-title">{task.title}</div>
 
-      {/* Tags */}
-      {task.tags && task.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-3">
-          {task.tags.slice(0, 3).map((tag) => (
-            <span
-              key={tag.id}
-              className={`tag tag-${tag.color}`}
-            >
-              {tag.name}
-            </span>
-          ))}
-          {task.tags.length > 3 && (
-            <span className="tag tag-gray">
-              +{task.tags.length - 3}
-            </span>
+      {/* Meta: Tags + Date */}
+      {hasMeta && (
+        <div className="task-card-meta" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+          {/* Tags */}
+          {task.tags && task.tags.length > 0 && (
+            <>
+              {task.tags.slice(0, 3).map((tag) => (
+                <span 
+                  key={tag.id} 
+                  className="tag"
+                  style={{ 
+                    backgroundColor: `${tag.color}20`,
+                    color: tag.color,
+                    fontSize: 11,
+                    padding: '2px 6px'
+                  }}
+                >
+                  {tag.name}
+                </span>
+              ))}
+              {task.tags.length > 3 && (
+                <span className="tag tag-gray" style={{ fontSize: 11, padding: '2px 6px' }}>
+                  +{task.tags.length - 3}
+                </span>
+              )}
+            </>
+          )}
+
+          {/* Date */}
+          {task.due_date && (
+            <div className={`task-card-date ${isOverdue ? 'overdue' : ''} ${isDueToday ? 'today' : ''}`}>
+              <Calendar size={12} />
+              <span>{format(new Date(task.due_date), 'dd MMM', { locale: ptBR })}</span>
+            </div>
           )}
         </div>
       )}
-
-      {/* Title */}
-      <h4 className="text-sm font-medium text-[var(--text-primary)] leading-snug mb-2 truncate-2 group-hover:text-[var(--accent)] transition-colors">
-        {task.title}
-      </h4>
-
-      {/* Description preview */}
-      {task.description && (
-        <p className="text-xs text-[var(--text-tertiary)] truncate-2 mb-3 leading-relaxed">
-          {task.description}
-        </p>
-      )}
-
-      {/* Footer with metadata */}
-      <div className="flex items-center gap-3 text-xs">
-        {/* Due Date */}
-        {task.due_date && (
-          <div 
-            className={`
-              flex items-center gap-1.5 px-2 py-1 rounded-md
-              ${isOverdue 
-                ? 'bg-[var(--danger-muted)] text-[var(--danger)]' 
-                : isDueToday 
-                  ? 'bg-[var(--warning-muted)] text-[var(--warning)]' 
-                  : 'text-[var(--text-tertiary)]'
-              }
-            `}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span className="font-medium">
-              {format(new Date(task.due_date), 'dd MMM', { locale: ptBR })}
-            </span>
-          </div>
-        )}
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Comments indicator (visual) */}
-        {task.description && (
-          <div className="flex items-center gap-1 text-[var(--text-quaternary)]">
-            <MessageSquare className="w-3.5 h-3.5" />
-          </div>
-        )}
-      </div>
     </div>
   )
 }

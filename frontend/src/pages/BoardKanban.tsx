@@ -26,8 +26,16 @@ import { TaskCard } from '../components/kanban/TaskCard'
 import { TaskModal } from '../components/kanban/TaskModal'
 import { boardsApi, stagesApi, tasksApi } from '../lib/api'
 import { Board, Stage, Task } from '../types'
-import { ArrowLeft, Columns3, Plus, Loader2, Palette } from 'lucide-react'
+import { ArrowLeft, LayoutGrid, Plus, Loader2 } from 'lucide-react'
 import { Modal } from '../components/ui/Modal'
+import { ConfirmModal } from '../components/ui/ConfirmModal'
+
+// Helper to format stage names (a_fazer -> A Fazer)
+function formatStageName(name: string): string {
+  return name
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
 
 export function BoardKanban() {
   const { boardId } = useParams<{ boardId: string }>()
@@ -44,14 +52,13 @@ export function BoardKanban() {
   const [savingNewTask, setSavingNewTask] = useState(false)
   const [isNewStageModalOpen, setIsNewStageModalOpen] = useState(false)
   const [newStageName, setNewStageName] = useState('')
-  const [newStageColor, setNewStageColor] = useState('#22d3ee')
+  const [newStageColor, setNewStageColor] = useState('#2383E2')
   const [savingNewStage, setSavingNewStage] = useState(false)
+  const [deleteStageId, setDeleteStageId] = useState<number | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
+      activationConstraint: { distance: 8 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -109,6 +116,7 @@ export function BoardKanban() {
     const activeId = active.id as number
     const overId = over.id
 
+    // Find source stage
     let sourceStageId: number | null = null
     for (const [stageId, tasks] of Object.entries(tasksByStage)) {
       if (tasks.find(t => t.id === activeId)) {
@@ -117,20 +125,30 @@ export function BoardKanban() {
       }
     }
 
+    // Find target stage and position
     let targetStageId: number | null = null
+    let targetIndex: number = -1
     
     if (typeof overId === 'string' && overId.startsWith('stage-')) {
+      // Dropping on empty column
       targetStageId = Number(overId.replace('stage-', ''))
+      targetIndex = 0
     } else {
+      // Dropping on another task
       for (const [stageId, tasks] of Object.entries(tasksByStage)) {
-        if (tasks.find(t => t.id === overId)) {
+        const taskIndex = tasks.findIndex(t => t.id === overId)
+        if (taskIndex !== -1) {
           targetStageId = Number(stageId)
+          targetIndex = taskIndex
           break
         }
       }
     }
 
-    if (!sourceStageId || !targetStageId || sourceStageId === targetStageId) return
+    if (!sourceStageId || !targetStageId) return
+
+    // Moving within same column is handled by SortableContext
+    if (sourceStageId === targetStageId) return
 
     setTasksByStage(prev => {
       const sourceTasks = [...(prev[sourceStageId!] || [])]
@@ -140,7 +158,13 @@ export function BoardKanban() {
       if (taskIndex === -1) return prev
 
       const [task] = sourceTasks.splice(taskIndex, 1)
-      targetTasks.push({ ...task, stage_id: targetStageId! })
+      
+      // Insert at the target position instead of appending
+      if (targetIndex === -1 || targetIndex >= targetTasks.length) {
+        targetTasks.push({ ...task, stage_id: targetStageId! })
+      } else {
+        targetTasks.splice(targetIndex, 0, { ...task, stage_id: targetStageId! })
+      }
 
       return {
         ...prev,
@@ -159,24 +183,26 @@ export function BoardKanban() {
     const activeId = active.id as number
     const overId = over.id
 
+    // Find current stage and tasks for the active item
     let stageId: number | null = null
     let tasks: Task[] = []
     
     for (const [sid, stageTasks] of Object.entries(tasksByStage)) {
       if (stageTasks.find(t => t.id === activeId)) {
         stageId = Number(sid)
-        tasks = stageTasks
+        tasks = [...stageTasks]
         break
       }
     }
 
     if (!stageId) return
 
+    // Handle reordering within the same column
     if (typeof overId === 'number' && activeId !== overId) {
       const oldIndex = tasks.findIndex(t => t.id === activeId)
       const newIndex = tasks.findIndex(t => t.id === overId)
 
-      if (oldIndex !== -1 && newIndex !== -1) {
+      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
         const newTasks = arrayMove(tasks, oldIndex, newIndex)
         setTasksByStage(prev => ({
           ...prev,
@@ -194,12 +220,14 @@ export function BoardKanban() {
         }
       }
     } else {
-      const newIndex = tasks.findIndex(t => t.id === activeId)
+      // Task moved to a different column (already handled in dragOver)
+      // Just persist the final position
+      const finalIndex = tasks.findIndex(t => t.id === activeId)
       
       try {
         await tasksApi.move(activeId, {
           stage_id: stageId,
-          position: newIndex,
+          position: finalIndex >= 0 ? finalIndex : 0,
         })
       } catch (error) {
         console.error('Erro ao mover task:', error)
@@ -255,7 +283,6 @@ export function BoardKanban() {
       await loadData()
       setIsNewStageModalOpen(false)
       setNewStageName('')
-      setNewStageColor('#22d3ee')
     } catch (error) {
       console.error('Erro ao criar stage:', error)
     } finally {
@@ -270,35 +297,22 @@ export function BoardKanban() {
   }, [])
 
   const handleDeleteStage = async (stageId: number) => {
-    if (!confirm('Tem certeza que deseja excluir esta coluna? Todas as tasks serao excluidas.')) {
-      return
-    }
-
     try {
       await stagesApi.delete(stageId)
       await loadData()
     } catch (error) {
       console.error('Erro ao excluir stage:', error)
     }
+    setDeleteStageId(null)
   }
 
-  // Premium color palette for stages
-  const stageColors = [
-    { color: '#22d3ee', name: 'Cyan' },
-    { color: '#34d399', name: 'Emerald' },
-    { color: '#fbbf24', name: 'Amber' },
-    { color: '#f87171', name: 'Red' },
-    { color: '#a78bfa', name: 'Violet' },
-    { color: '#fb7185', name: 'Rose' },
-    { color: '#60a5fa', name: 'Blue' },
-    { color: '#4ade80', name: 'Green' },
-  ]
+  const stageColors = ['#2383E2', '#4DAB9A', '#CB912F', '#E03E3E', '#9065B0', '#C14C8A']
 
   if (loading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
-          <Loading size="lg" text="Carregando board..." />
+        <div className="loading-page">
+          <Loading />
         </div>
       </Layout>
     )
@@ -307,16 +321,11 @@ export function BoardKanban() {
   if (!board) {
     return (
       <Layout>
-        <div className="p-8">
+        <div className="page-container">
           <EmptyState
-            icon={<Columns3 className="w-7 h-7" />}
+            icon={<LayoutGrid size={32} />}
             title="Board nao encontrado"
-            description="O board que voce esta procurando nao existe ou foi excluido."
-            action={
-              <Link to="/" className="btn btn-primary">
-                Voltar ao Dashboard
-              </Link>
-            }
+            action={<Link to="/" className="btn btn-primary">Voltar</Link>}
           />
         </div>
       </Layout>
@@ -325,96 +334,61 @@ export function BoardKanban() {
 
   return (
     <Layout>
-      <div className="h-[calc(100vh-4rem)] flex flex-col">
-        {/* Board Header */}
-        <div className="flex-shrink-0 px-6 py-5 border-b border-[var(--border-subtle)] bg-[var(--bg-raised)]">
-          <Link 
-            to={`/workspace/${board.workspace_id}`}
-            className="inline-flex items-center gap-2 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] mb-3 transition-colors text-sm group"
-          >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Voltar aos Boards
+      <div className="page-container-full">
+        {/* Header */}
+        <div style={{ marginBottom: 24 }}>
+          <Link to={`/workspace/${board.workspace_id}`} className="page-back">
+            <ArrowLeft className="page-back-icon" />
+            Voltar
           </Link>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--accent)] to-cyan-400 flex items-center justify-center">
-                <Columns3 className="w-5 h-5 text-[var(--bg-base)]" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">
-                  {board.name}
-                </h1>
-                {board.description && (
-                  <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
-                    {board.description}
-                  </p>
-                )}
-              </div>
-            </div>
-            <button
-              onClick={() => setIsNewStageModalOpen(true)}
-              className="btn btn-secondary"
-            >
-              <Plus className="w-4 h-4" />
-              Nova Coluna
-            </button>
-          </div>
+          
+          <h1 className="page-title" style={{ fontSize: 24 }}>{board.name}</h1>
         </div>
 
         {/* Kanban Board */}
-        <div className="flex-1 overflow-x-auto p-6 bg-gradient-subtle">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCorners}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-          >
-            <div className="flex gap-5 h-full min-w-max stagger-children">
-              {stages.map((stage, index) => (
-                <KanbanColumn
-                  key={stage.id}
-                  stage={stage}
-                  tasks={tasksByStage[stage.id] || []}
-                  color={stage.color || stageColors[index % stageColors.length].color}
-                  onTaskClick={handleTaskClick}
-                  onAddTask={() => handleNewTask(stage.id)}
-                  onDeleteStage={() => handleDeleteStage(stage.id)}
-                />
-              ))}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="kanban">
+            {stages.map((stage, index) => (
+              <KanbanColumn
+                key={stage.id}
+                stage={stage}
+                stageName={formatStageName(stage.name)}
+                tasks={tasksByStage[stage.id] || []}
+                color={stage.color || stageColors[index % stageColors.length]}
+                onTaskClick={handleTaskClick}
+                onAddTask={() => handleNewTask(stage.id)}
+                onDeleteStage={() => setDeleteStageId(stage.id)}
+              />
+            ))}
 
-              {/* Add Column Button */}
-              <button
-                onClick={() => setIsNewStageModalOpen(true)}
-                className="flex-shrink-0 w-80 h-fit p-6 rounded-xl border-2 border-dashed border-[var(--border-default)] hover:border-[var(--accent)] bg-[var(--bg-raised)]/50 hover:bg-[var(--bg-elevated)] transition-all duration-300 group flex flex-col items-center justify-center gap-3 text-[var(--text-tertiary)] hover:text-[var(--accent)]"
-              >
-                <div className="w-12 h-12 rounded-xl bg-[var(--bg-surface)] group-hover:bg-[var(--accent-muted)] flex items-center justify-center transition-all duration-300 group-hover:scale-110">
-                  <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
-                </div>
-                <span className="font-medium">Adicionar Coluna</span>
-              </button>
-            </div>
+            {/* Add Column - Single button, positioned as last column */}
+            <button onClick={() => setIsNewStageModalOpen(true)} className="kanban-add-column">
+              <Plus size={20} />
+              <span>Nova Coluna</span>
+            </button>
+          </div>
 
-            <DragOverlay>
-              {activeTask ? (
-                <TaskCard task={activeTask} isDragging />
-              ) : null}
-            </DragOverlay>
-          </DndContext>
-        </div>
+          <DragOverlay>
+            {activeTask ? <TaskCard task={activeTask} isDragging /> : null}
+          </DragOverlay>
+        </DndContext>
       </div>
 
       {/* New Task Modal */}
       <Modal
         isOpen={isNewTaskModalOpen}
         onClose={() => setIsNewTaskModalOpen(false)}
-        title="Nova Task"
+        title="Nova Tarefa"
       >
-        <form onSubmit={handleCreateTask} className="space-y-5">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              Titulo
-            </label>
+        <form onSubmit={handleCreateTask}>
+          <div style={{ marginBottom: 24 }}>
+            <label className="input-label">Titulo</label>
             <input
               type="text"
               value={newTaskTitle}
@@ -426,16 +400,12 @@ export function BoardKanban() {
             />
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <button 
-              type="button" 
-              onClick={() => setIsNewTaskModalOpen(false)} 
-              className="btn btn-secondary flex-1"
-            >
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="btn btn-secondary">
               Cancelar
             </button>
-            <button type="submit" disabled={savingNewTask} className="btn btn-primary flex-1">
-              {savingNewTask ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Criar Task'}
+            <button type="submit" disabled={savingNewTask} className="btn btn-primary">
+              {savingNewTask ? <Loader2 size={16} className="spinner" /> : 'Criar'}
             </button>
           </div>
         </form>
@@ -447,11 +417,9 @@ export function BoardKanban() {
         onClose={() => setIsNewStageModalOpen(false)}
         title="Nova Coluna"
       >
-        <form onSubmit={handleCreateStage} className="space-y-5">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              Nome
-            </label>
+        <form onSubmit={handleCreateStage}>
+          <div style={{ marginBottom: 16 }}>
+            <label className="input-label">Nome</label>
             <input
               type="text"
               value={newStageName}
@@ -463,44 +431,27 @@ export function BoardKanban() {
             />
           </div>
 
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
-              <Palette className="w-4 h-4" />
-              Cor
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {stageColors.map(({ color, name }) => (
+          <div style={{ marginBottom: 24 }}>
+            <label className="input-label">Cor</label>
+            <div className="color-picker">
+              {stageColors.map((color) => (
                 <button
                   key={color}
                   type="button"
                   onClick={() => setNewStageColor(color)}
-                  title={name}
-                  className={`
-                    w-10 h-10 rounded-xl transition-all duration-200
-                    ${newStageColor === color 
-                      ? 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-[var(--bg-surface)]' 
-                      : 'hover:scale-105'
-                    }
-                  `}
-                  style={{ 
-                    backgroundColor: color,
-                    boxShadow: newStageColor === color ? `0 0 20px ${color}50` : undefined
-                  }}
+                  className={`color-option ${newStageColor === color ? 'selected' : ''}`}
+                  style={{ backgroundColor: color }}
                 />
               ))}
             </div>
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <button 
-              type="button" 
-              onClick={() => setIsNewStageModalOpen(false)} 
-              className="btn btn-secondary flex-1"
-            >
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setIsNewStageModalOpen(false)} className="btn btn-secondary">
               Cancelar
             </button>
-            <button type="submit" disabled={savingNewStage} className="btn btn-primary flex-1">
-              {savingNewStage ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Criar Coluna'}
+            <button type="submit" disabled={savingNewStage} className="btn btn-primary">
+              {savingNewStage ? <Loader2 size={16} className="spinner" /> : 'Criar'}
             </button>
           </div>
         </form>
@@ -519,6 +470,17 @@ export function BoardKanban() {
           onUpdate={handleTaskUpdate}
         />
       )}
+
+      {/* Confirm Delete Stage Modal */}
+      <ConfirmModal
+        isOpen={deleteStageId !== null}
+        onClose={() => setDeleteStageId(null)}
+        onConfirm={() => deleteStageId && handleDeleteStage(deleteStageId)}
+        title="Excluir coluna"
+        message="Tem certeza que deseja excluir esta coluna? Todas as tarefas dentro dela serao perdidas."
+        confirmText="Excluir"
+        variant="danger"
+      />
     </Layout>
   )
 }

@@ -9,21 +9,11 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
   return (
-    <div className="empty-state animate-fade-in">
-      {icon && (
-        <div className="empty-state-icon">
-          {icon}
-        </div>
-      )}
+    <div className="empty-state">
+      {icon && <div className="empty-state-icon">{icon}</div>}
       <h3 className="empty-state-title">{title}</h3>
-      {description && (
-        <p className="empty-state-description">{description}</p>
-      )}
-      {action && (
-        <div className="mt-2">
-          {action}
-        </div>
-      )}
+      {description && <p className="empty-state-description">{description}</p>}
+      {action && <div>{action}</div>}
     </div>
   )
 }

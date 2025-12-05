@@ -2,20 +2,18 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Layout } from '../components/layout/Layout'
 import { Modal } from '../components/ui/Modal'
+import { ConfirmModal } from '../components/ui/ConfirmModal'
 import { Loading } from '../components/ui/Loading'
 import { EmptyState } from '../components/ui/EmptyState'
 import { workspacesApi } from '../lib/api'
 import { Workspace } from '../types'
 import { 
   Plus, 
-  Briefcase, 
+  FolderOpen, 
   MoreHorizontal, 
   Pencil, 
   Trash2,
-  Loader2,
-  Layers,
-  ArrowUpRight,
-  Sparkles
+  Loader2
 } from 'lucide-react'
 
 export function Dashboard() {
@@ -26,6 +24,7 @@ export function Dashboard() {
   const [formData, setFormData] = useState({ name: '', description: '' })
   const [saving, setSaving] = useState(false)
   const [openMenu, setOpenMenu] = useState<number | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -76,10 +75,6 @@ export function Dashboard() {
   }
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Tem certeza que deseja excluir este workspace? Todos os boards e tasks serao excluidos.')) {
-      return
-    }
-
     try {
       await workspacesApi.delete(id)
       await loadWorkspaces()
@@ -87,6 +82,7 @@ export function Dashboard() {
       console.error('Erro ao excluir workspace:', error)
     }
     setOpenMenu(null)
+    setDeleteConfirm(null)
   }
 
   const openEditModal = (workspace: Workspace) => {
@@ -102,21 +98,11 @@ export function Dashboard() {
     setFormData({ name: '', description: '' })
   }
 
-  // Premium gradient combinations
-  const gradients = [
-    'from-cyan-500 via-cyan-400 to-teal-400',
-    'from-violet-500 via-purple-400 to-fuchsia-400',
-    'from-amber-500 via-orange-400 to-rose-400',
-    'from-emerald-500 via-green-400 to-cyan-400',
-    'from-blue-500 via-indigo-400 to-violet-400',
-    'from-rose-500 via-pink-400 to-fuchsia-400',
-  ]
-
   if (loading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
-          <Loading size="lg" text="Carregando workspaces..." />
+        <div className="loading-page">
+          <Loading />
         </div>
       </Layout>
     )
@@ -124,195 +110,153 @@ export function Dashboard() {
 
   return (
     <Layout>
-      <div className="p-6 md:p-10 max-w-7xl mx-auto">
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-10">
-          <div className="animate-fade-in">
-            <h1 className="text-3xl font-bold text-[var(--text-primary)] tracking-tight">
-              Workspaces
-            </h1>
-            <p className="text-[var(--text-tertiary)] mt-2 text-base">
-              Organize seus projetos em diferentes areas de trabalho
-            </p>
+      <div className="page-container">
+        {/* Header */}
+        <div className="page-header">
+          <div className="page-header-actions">
+            <div>
+              <h1 className="page-title">Workspaces</h1>
+              <p className="page-description">Organize seus projetos em diferentes areas de trabalho</p>
+            </div>
+            <button onClick={() => setIsModalOpen(true)} className="btn btn-primary">
+              <Plus size={16} />
+              Novo
+            </button>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="btn btn-primary animate-fade-in"
-            style={{ animationDelay: '100ms' }}
-          >
-            <Plus className="w-5 h-5" />
-            <span>Novo Workspace</span>
-          </button>
         </div>
 
-        {/* Workspaces Grid */}
+        {/* Content */}
         {workspaces.length === 0 ? (
           <EmptyState
-            icon={<Briefcase className="w-7 h-7" />}
-            title="Nenhum workspace ainda"
-            description="Crie seu primeiro workspace para comecar a organizar seus projetos e tarefas."
+            icon={<FolderOpen size={32} />}
+            title="Nenhum workspace"
+            description="Crie seu primeiro workspace para comecar a organizar seus projetos."
             action={
               <button onClick={() => setIsModalOpen(true)} className="btn btn-primary">
-                <Plus className="w-5 h-5" />
+                <Plus size={16} />
                 Criar Workspace
               </button>
             }
           />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 stagger-children">
-            {workspaces.map((workspace, index) => (
-              <div
-                key={workspace.id}
-                className="group relative"
-              >
-                <div className="card card-interactive card-accent overflow-hidden">
-                  {/* Gradient Header */}
-                  <div className={`h-28 bg-gradient-to-br ${gradients[index % gradients.length]} relative overflow-hidden`}>
-                    {/* Pattern overlay */}
-                    <div 
-                      className="absolute inset-0 opacity-10"
-                      style={{
-                        backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)',
-                        backgroundSize: '16px 16px'
-                      }}
-                    />
-                    
-                    {/* Icon */}
-                    <div className="absolute bottom-4 left-5">
-                      <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-lg">
-                        <Layers className="w-6 h-6 text-white" />
-                      </div>
-                    </div>
-                    
-                    {/* Menu Button */}
-                    <div 
-                      className="absolute top-3 right-3" 
-                      ref={openMenu === workspace.id ? menuRef : undefined}
-                    >
+          <div className="grid">
+            {workspaces.map((workspace) => (
+              <div key={workspace.id} className="grid-card" style={{ position: 'relative' }}>
+                <Link to={`/workspace/${workspace.id}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+                  <div className="grid-card-icon">
+                    <FolderOpen size={18} />
+                  </div>
+                  <h3 className="grid-card-title">{workspace.name}</h3>
+                  {workspace.description && (
+                    <p className="grid-card-description truncate-2">{workspace.description}</p>
+                  )}
+                </Link>
+                
+                {/* Menu */}
+                <div className="card-menu" ref={openMenu === workspace.id ? menuRef : null}>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setOpenMenu(openMenu === workspace.id ? null : workspace.id)
+                    }}
+                    className="btn btn-ghost btn-icon-sm"
+                  >
+                    <MoreHorizontal size={16} />
+                  </button>
+
+                  {openMenu === workspace.id && (
+                    <div className="dropdown fade-in" style={{ right: 0, top: '100%', marginTop: 4 }}>
                       <button
                         onClick={(e) => {
-                          e.preventDefault()
                           e.stopPropagation()
-                          setOpenMenu(openMenu === workspace.id ? null : workspace.id)
+                          openEditModal(workspace)
                         }}
-                        className="p-2 rounded-lg bg-black/20 hover:bg-black/40 backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100"
+                        className="dropdown-item"
                       >
-                        <MoreHorizontal className="w-4 h-4 text-white" />
+                        <Pencil className="dropdown-item-icon" />
+                        Editar
                       </button>
-
-                      {openMenu === workspace.id && (
-                        <div className="absolute right-0 top-full mt-2 dropdown-menu z-50 animate-fade-in-scale">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openEditModal(workspace)
-                            }}
-                            className="dropdown-item"
-                          >
-                            <Pencil className="w-4 h-4" />
-                            Editar
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDelete(workspace.id)
-                            }}
-                            className="dropdown-item dropdown-item-danger"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Excluir
-                          </button>
-                        </div>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setOpenMenu(null)
+                          setDeleteConfirm(workspace.id)
+                        }}
+                        className="dropdown-item dropdown-item-danger"
+                      >
+                        <Trash2 className="dropdown-item-icon" />
+                        Excluir
+                      </button>
                     </div>
-                  </div>
-
-                  {/* Content */}
-                  <Link to={`/workspace/${workspace.id}`} className="block p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-[var(--text-primary)] text-base truncate group-hover:text-[var(--accent)] transition-colors">
-                          {workspace.name}
-                        </h3>
-                        {workspace.description && (
-                          <p className="text-sm text-[var(--text-tertiary)] mt-1.5 truncate-2">
-                            {workspace.description}
-                          </p>
-                        )}
-                      </div>
-                      <ArrowUpRight className="w-5 h-5 text-[var(--text-quaternary)] group-hover:text-[var(--accent)] transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100 transform translate-x-1 group-hover:translate-x-0" />
-                    </div>
-                  </Link>
+                  )}
                 </div>
               </div>
             ))}
 
-            {/* Add New Card */}
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="card group flex flex-col items-center justify-center min-h-[200px] border-2 border-dashed border-[var(--border-default)] hover:border-[var(--accent)] bg-transparent transition-all duration-300"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-[var(--bg-surface)] group-hover:bg-[var(--accent-muted)] flex items-center justify-center transition-all duration-300 mb-4 group-hover:scale-110">
-                <Plus className="w-7 h-7 text-[var(--text-tertiary)] group-hover:text-[var(--accent)] transition-colors" />
-              </div>
-              <span className="text-[var(--text-tertiary)] group-hover:text-[var(--accent)] font-medium transition-colors">
-                Novo Workspace
-              </span>
+            {/* Add Card - Same size as others */}
+            <button onClick={() => setIsModalOpen(true)} className="grid-card grid-card-add">
+              <Plus className="grid-card-add-icon" />
+              <span className="grid-card-add-text">Novo Workspace</span>
             </button>
           </div>
         )}
       </div>
 
-      {/* Create/Edit Modal */}
+      {/* Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={closeModal}
         title={editingWorkspace ? 'Editar Workspace' : 'Novo Workspace'}
       >
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              Nome
-            </label>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 16 }}>
+            <label className="input-label">Nome</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="input"
-              placeholder="Ex: Trabalho, Pessoal, Estudos..."
+              placeholder="Ex: Trabalho, Pessoal..."
               required
               autoFocus
             />
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-[var(--text-secondary)]">
-              Descricao
-              <span className="text-[var(--text-quaternary)] font-normal ml-1">(opcional)</span>
+          <div style={{ marginBottom: 24 }}>
+            <label className="input-label">
+              Descricao <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(opcional)</span>
             </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="input resize-none"
+              className="input"
               rows={3}
-              placeholder="Uma breve descricao do workspace..."
+              placeholder="Uma breve descricao..."
             />
           </div>
 
-          <div className="flex gap-3 pt-4">
-            <button type="button" onClick={closeModal} className="btn btn-secondary flex-1">
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" onClick={closeModal} className="btn btn-secondary">
               Cancelar
             </button>
-            <button type="submit" disabled={saving} className="btn btn-primary flex-1">
-              {saving ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                editingWorkspace ? 'Salvar' : 'Criar'
-              )}
+            <button type="submit" disabled={saving} className="btn btn-primary">
+              {saving ? <Loader2 size={16} className="spinner" /> : (editingWorkspace ? 'Salvar' : 'Criar')}
             </button>
           </div>
         </form>
       </Modal>
+
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        isOpen={deleteConfirm !== null}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
+        title="Excluir workspace"
+        message="Tem certeza que deseja excluir este workspace? Todos os boards e tarefas serao perdidos."
+        confirmText="Excluir"
+        variant="danger"
+      />
     </Layout>
   )
 }

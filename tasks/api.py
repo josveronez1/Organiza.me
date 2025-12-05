@@ -13,16 +13,29 @@ class TagIn(Schema):
     color: str = "#3B82F6"
     workspace_id: int
 
+class TagUpdate(Schema):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
 class SubtaskIn(Schema):
     title: str
     task_id: int
     is_completed: bool = False
     position: int = 0
 
+class SubtaskUpdate(Schema):
+    title: Optional[str] = None
+    is_completed: Optional[bool] = None
+    position: Optional[int] = None
+
 class AttachmentIn(Schema):
     file_url: str
     file_name: str
     task_id: int
+
+class AttachmentUpdate(Schema):
+    file_url: Optional[str] = None
+    file_name: Optional[str] = None
 
 # ===== ROTAS ESTÁTICAS PRIMEIRO =====
 
@@ -50,11 +63,12 @@ def get_tag(request, tag_id: int):
         "workspace_id": tag.workspace_id
     }
 @router.put("/tags/{tag_id}/")
-def update_tag(request, tag_id: int, data: TagIn):
+def update_tag(request, tag_id: int, data: TagUpdate):
     tag = get_object_or_404(Tag, id=tag_id, workspace__owner_uid=request.auth)
-    tag.name = data.name
-    tag.color = data.color
-    tag.workspace_id = data.workspace_id
+    if data.name is not None:
+        tag.name = data.name
+    if data.color is not None:
+        tag.color = data.color
     tag.save()
     return{"success": True}
 
@@ -90,12 +104,14 @@ def get_subtask(request, subtask_id: int):
     }
 
 @router.put("/subtasks/{subtask_id}/")
-def update_subtask(request, subtask_id: int, data: SubtaskIn):
+def update_subtask(request, subtask_id: int, data: SubtaskUpdate):
     subtask = get_object_or_404(Subtask, id=subtask_id, task__stage__board__workspace__owner_uid=request.auth)
-    subtask.title = data.title
-    subtask.task_id = data.task_id
-    subtask.is_completed = data.is_completed
-    subtask.position = data.position
+    if data.title is not None:
+        subtask.title = data.title
+    if data.is_completed is not None:
+        subtask.is_completed = data.is_completed
+    if data.position is not None:
+        subtask.position = data.position
     subtask.save()
     return{"success": True}
 
@@ -130,11 +146,12 @@ def get_attachment(request, attachment_id: int):
     }
 
 @router.put("/attachments/{attachment_id}/")
-def update_attachment(request, attachment_id: int, data: AttachmentIn):
+def update_attachment(request, attachment_id: int, data: AttachmentUpdate):
     attachment = get_object_or_404(Attachment, id=attachment_id, task__stage__board__workspace__owner_uid=request.auth)
-    attachment.file_url = data.file_url
-    attachment.file_name = data.file_name
-    attachment.task_id = data.task_id
+    if data.file_url is not None:
+        attachment.file_url = data.file_url
+    if data.file_name is not None:
+        attachment.file_name = data.file_name
     attachment.save()
     return{"success": True}
 
@@ -154,12 +171,35 @@ class TaskIn(Schema):
     start_date: Optional[date] = None
     due_date: Optional[date] = None
 
+class TaskUpdate(Schema):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    stage_id: Optional[int] = None
+    position: Optional[int] = None
+    start_date: Optional[date] = None
+    due_date: Optional[date] = None
+
 @router.get("/")
 def list_tasks(request, stage_id: int = None):
     tasks = Task.objects.filter(stage__board__workspace__owner_uid=request.auth).order_by('position')
     if stage_id:
         tasks = tasks.filter(stage_id=stage_id)
-    return list (tasks.values())
+    
+    result = []
+    for task in tasks:
+        task_data = {
+            "id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "stage_id": task.stage_id,
+            "position": task.position,
+            "start_date": task.start_date,
+            "due_date": task.due_date,
+            "created_at": task.created_at,
+            "tags": list(task.tags.values("id", "name", "color"))
+        }
+        result.append(task_data)
+    return result
 
 @router.post("/")
 def create_task(request, data: TaskIn):
@@ -180,14 +220,20 @@ def get_task(request, task_id: int):
         "due_date": task.due_date
     }
 @router.put("/{task_id}/")
-def update_task(request, task_id: int, data: TaskIn):
+def update_task(request, task_id: int, data: TaskUpdate):
     task = get_object_or_404(Task, id=task_id, stage__board__workspace__owner_uid=request.auth)
-    task.title = data.title
-    task.description = data.description
-    task.stage_id = data.stage_id
-    task.position = data.position
-    task.start_date = data.start_date
-    task.due_date = data.due_date
+    if data.title is not None:
+        task.title = data.title
+    if data.description is not None:
+        task.description = data.description
+    if data.stage_id is not None:
+        task.stage_id = data.stage_id
+    if data.position is not None:
+        task.position = data.position
+    if data.start_date is not None:
+        task.start_date = data.start_date
+    if data.due_date is not None:
+        task.due_date = data.due_date
     task.save()
     return{"success": True}
 

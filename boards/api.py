@@ -2,6 +2,7 @@ from ninja import Router, Schema
 from .models import Board, Stage
 from workspaces.models import Workspace
 from django.shortcuts import get_object_or_404
+from typing import Optional
 
 router = Router()
 
@@ -10,6 +11,11 @@ class StageIn(Schema):
     board_id: int
     position: int = 0
     color: str = "#6B7280"
+
+class StageUpdate(Schema):
+    name: Optional[str] = None
+    position: Optional[int] = None
+    color: Optional[str] = None
 
 @router.get("/stages/")
 def list_stages(request, board_id: int = None):
@@ -36,11 +42,14 @@ def get_stage(request, stage_id: int):
     }
 
 @router.put("/stages/{stage_id}/")
-def update_stage(request, stage_id: int, data: StageIn):
+def update_stage(request, stage_id: int, data: StageUpdate):
     stage = get_object_or_404(Stage, id=stage_id, board__workspace__owner_uid=request.auth)
-    stage.name = data.name 
-    stage.position = data.position
-    stage.color = data.color
+    if data.name is not None:
+        stage.name = data.name 
+    if data.position is not None:
+        stage.position = data.position
+    if data.color is not None:
+        stage.color = data.color
     stage.save()
     return{"success": True}
 
@@ -54,6 +63,10 @@ class BoardIn(Schema):
     name: str
     workspace_id: int
     position: int = 0
+
+class BoardUpdate(Schema):
+    name: Optional[str] = None
+    position: Optional[int] = None
 
 @router.get("/")
 def list_boards(request, workspace_id: int = None):
@@ -74,16 +87,18 @@ def get_board(request, board_id: int):
     return {
         "id": board.id,
         "name": board.name,
-        "workspace": board.workspace_id,
+        "workspace_id": board.workspace_id,
         "position": board.position,
         "created_at": board.created_at
     }
 
 @router.put("/{board_id}/")
-def update_board(request, board_id: int, data: BoardIn):
+def update_board(request, board_id: int, data: BoardUpdate):
     board = get_object_or_404(Board, id=board_id, workspace__owner_uid=request.auth)
-    board.name = data.name
-    board.position = data.position
+    if data.name is not None:
+        board.name = data.name
+    if data.position is not None:
+        board.position = data.position
     board.save()
     return{"success": True}
 

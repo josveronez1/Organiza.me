@@ -1,12 +1,17 @@
 from ninja import Router, Schema
 from .models import Workspace
 from django.shortcuts import get_object_or_404
+from typing import Optional
 
 router = Router()
 
 class WorkspaceIn(Schema):
     name: str
     description: str = None
+
+class WorkspaceUpdate(Schema):
+    name: Optional[str] = None
+    description: Optional[str] = None
 
 @router.get("/")
 def list_workspaces(request):
@@ -34,11 +39,12 @@ def get_workspace(request, workspace_id: int):
     }
 
 @router.put("/{workspace_id}/")
-def update_workspace(request, workspace_id: int, data: WorkspaceIn):
+def update_workspace(request, workspace_id: int, data: WorkspaceUpdate):
     workspace = get_object_or_404(Workspace, id=workspace_id, owner_uid=request.auth)
-    workspace.name = data.name
-    workspace.description = data.description
-    workspace.owner_uid = request.auth
+    if data.name is not None:
+        workspace.name = data.name
+    if data.description is not None:
+        workspace.description = data.description
     workspace.save()
     return {"success": True}
 
