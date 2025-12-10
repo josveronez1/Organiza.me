@@ -35,6 +35,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'overview.apps.OverviewConfig',
     'corsheaders',
     'tasks.apps.TasksConfig',
     'boards.apps.BoardsConfig',
