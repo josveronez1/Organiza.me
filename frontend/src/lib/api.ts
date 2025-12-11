@@ -111,6 +111,12 @@ export const attachmentsApi = {
   delete: (id: number) => api.delete(`/tasks/attachments/${id}/`),
 }
 
+// ==================== OVERVIEW ====================
+export const overviewApi = {
+  list: (params?: { period?: 'day' | 'week' | 'month'; ref_date?: string }) => 
+    api.get('/overview/', { params }),
+}
+
 
 
 

@@ -70,6 +70,21 @@ export interface User {
   }
 }
 
+// Overview types
+export type OverviewPeriod = 'day' | 'week' | 'month'
+
+export interface OverviewTask {
+  id: number
+  title: string
+  due_date: string | null
+  stage_id: number
+  stage_name: string
+  board_id: number
+  board_name: string
+  workspace_id: number
+  workspace_name: string
+}
+
 
 
 

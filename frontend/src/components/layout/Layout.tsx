@@ -1,13 +1,13 @@
 import { ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { usePinnedBoards } from '../../contexts/PinnedBoardsContext'
 import { 
-  LayoutGrid, 
   LogOut, 
-  Settings,
-  ChevronRight,
   Home,
-  FolderOpen
+  FolderOpen,
+  LayoutGrid,
+  Calendar
 } from 'lucide-react'
 
 interface LayoutProps {
@@ -18,6 +18,7 @@ export function Layout({ children }: LayoutProps) {
   const { user, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const { pinnedBoards } = usePinnedBoards()
 
   const handleSignOut = async () => {
     await signOut()
@@ -50,13 +51,37 @@ export function Layout({ children }: LayoutProps) {
               <span>Inicio</span>
             </Link>
             <Link 
-              to="/" 
-              className={`sidebar-item ${location.pathname.startsWith('/workspace') ? 'active' : ''}`}
+              to="/workspaces" 
+              className={`sidebar-item ${location.pathname === '/workspaces' || location.pathname.startsWith('/workspace/') ? 'active' : ''}`}
             >
               <FolderOpen className="sidebar-item-icon" />
               <span>Workspaces</span>
             </Link>
+            <Link 
+              to="/calendar" 
+              className={`sidebar-item ${isActive('/calendar') ? 'active' : ''}`}
+            >
+              <Calendar className="sidebar-item-icon" />
+              <span>Calendário</span>
+            </Link>
           </div>
+
+          {/* Pinned Boards */}
+          {pinnedBoards.length > 0 && (
+            <div className="sidebar-section">
+              <div className="sidebar-section-title">Fixados</div>
+              {pinnedBoards.map((board) => (
+                <Link
+                  key={board.id}
+                  to={`/board/${board.id}`}
+                  className={`sidebar-item ${location.pathname === `/board/${board.id}` ? 'active' : ''}`}
+                >
+                  <LayoutGrid className="sidebar-item-icon" />
+                  <span className="truncate">{board.name}</span>
+                </Link>
+              ))}
+            </div>
+          )}
         </nav>
 
         {/* User Footer */}

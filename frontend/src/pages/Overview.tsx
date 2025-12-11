@@ -16,7 +16,7 @@ import {
   Check,
   Loader2
 } from 'lucide-react'
-import { format, addDays, addWeeks, addMonths, startOfWeek, endOfWeek } from 'date-fns'
+import { format, addDays, addWeeks, addMonths, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 // Helper to format stage names (a_fazer -> A Fazer)
@@ -40,10 +40,10 @@ interface GroupedTasks {
   }
 }
 
-export function Dashboard() {
+export function Overview() {
   const [tasks, setTasks] = useState<OverviewTask[]>([])
   const [loading, setLoading] = useState(true)
-  const [period, setPeriod] = useState<OverviewPeriod>('month')
+  const [period, setPeriod] = useState<OverviewPeriod>('week')
   const [refDate, setRefDate] = useState(new Date())
   
   // Stage selector state
@@ -270,10 +270,10 @@ export function Dashboard() {
           {/* Period Selector */}
           <div className="overview-period-selector">
             <button
-              onClick={() => setPeriod('month')}
-              className={`overview-period-btn ${period === 'month' ? 'active' : ''}`}
+              onClick={() => setPeriod('day')}
+              className={`overview-period-btn ${period === 'day' ? 'active' : ''}`}
             >
-              Mês
+              Dia
             </button>
             <button
               onClick={() => setPeriod('week')}
@@ -282,10 +282,10 @@ export function Dashboard() {
               Semana
             </button>
             <button
-              onClick={() => setPeriod('day')}
-              className={`overview-period-btn ${period === 'day' ? 'active' : ''}`}
+              onClick={() => setPeriod('month')}
+              className={`overview-period-btn ${period === 'month' ? 'active' : ''}`}
             >
-              Dia
+              Mês
             </button>
           </div>
 
@@ -329,9 +329,7 @@ export function Dashboard() {
 
                 {/* Boards */}
                 <div className="overview-boards">
-                  {Object.entries(workspace.boards).map(([boardId, board]) => {
-                    const boardData = board as GroupedTasks[number]['boards'][number]
-                    return (
+                  {Object.entries(workspace.boards).map(([boardId, board]) => (
                     <div key={boardId} className="overview-board">
                       {/* Board Header */}
                       <Link 
@@ -339,15 +337,15 @@ export function Dashboard() {
                         className="overview-board-header"
                       >
                         <LayoutGrid size={14} />
-                        <span>{boardData.board_name}</span>
+                        <span>{board.board_name}</span>
                         <span className="overview-board-count">
-                          {boardData.tasks.length + boardData.tasksWithoutDate.length}
+                          {board.tasks.length + board.tasksWithoutDate.length}
                         </span>
                       </Link>
 
                       {/* Tasks with due date */}
                       <div className="overview-tasks">
-                        {boardData.tasks.map((task: OverviewTask) => (
+                        {board.tasks.map((task) => (
                           <div key={task.id} className="overview-task">
                             <div className="overview-task-info">
                               <span className="overview-task-title">{task.title}</span>
@@ -416,12 +414,12 @@ export function Dashboard() {
                         ))}
 
                         {/* Tasks without due date */}
-                        {boardData.tasksWithoutDate.length > 0 && (
+                        {board.tasksWithoutDate.length > 0 && (
                           <>
                             <div className="overview-section-divider">
                               <span>Sem data definida</span>
                             </div>
-                            {boardData.tasksWithoutDate.map((task: OverviewTask) => (
+                            {board.tasksWithoutDate.map((task) => (
                               <div key={task.id} className="overview-task overview-task-no-date">
                                 <div className="overview-task-info">
                                   <span className="overview-task-title">{task.title}</span>
@@ -486,8 +484,7 @@ export function Dashboard() {
                         )}
                       </div>
                     </div>
-                    )
-                  })}
+                  ))}
                 </div>
               </div>
             ))}
@@ -497,3 +494,4 @@ export function Dashboard() {
     </Layout>
   )
 }
+

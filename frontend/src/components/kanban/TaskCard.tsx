@@ -1,45 +1,29 @@
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { forwardRef } from 'react'
 import { Task } from '../../types'
 import { Calendar } from 'lucide-react'
 import { format, isPast, isToday } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
-interface TaskCardProps {
+interface TaskCardProps extends React.HTMLAttributes<HTMLDivElement> {
   task: Task
   onClick?: () => void
   isDragging?: boolean
 }
 
-export function TaskCard({ task, onClick, isDragging = false }: TaskCardProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging: isSortableDragging,
-  } = useSortable({ id: task.id })
+export const TaskCard = forwardRef<HTMLDivElement, TaskCardProps>(
+  ({ task, onClick, isDragging = false, className = '', ...props }, ref) => {
+    const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date))
+    const isDueToday = task.due_date && isToday(new Date(task.due_date))
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  }
+    const hasMeta = task.due_date || (task.tags && task.tags.length > 0)
 
-  const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date))
-  const isDueToday = task.due_date && isToday(new Date(task.due_date))
-
-  const hasMeta = task.due_date || (task.tags && task.tags.length > 0)
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      onClick={onClick}
-      className={`task-card ${isSortableDragging || isDragging ? 'dragging' : ''}`}
-    >
+    return (
+      <div
+        ref={ref}
+        onClick={onClick}
+        className={`task-card ${isDragging ? 'dragging' : ''} ${className}`.trim()}
+        {...props}
+      >
       {/* Title */}
       <div className="task-card-title">{task.title}</div>
 
@@ -80,6 +64,9 @@ export function TaskCard({ task, onClick, isDragging = false }: TaskCardProps) {
           )}
         </div>
       )}
-    </div>
-  )
-}
+      </div>
+    )
+  }
+)
+
+TaskCard.displayName = 'TaskCard'

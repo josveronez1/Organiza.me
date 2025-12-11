@@ -6,6 +6,7 @@ import { ConfirmModal } from '../components/ui/ConfirmModal'
 import { Loading } from '../components/ui/Loading'
 import { EmptyState } from '../components/ui/EmptyState'
 import { workspacesApi, boardsApi } from '../lib/api'
+import { usePinnedBoards } from '../contexts/PinnedBoardsContext'
 import { Workspace, Board } from '../types'
 import { 
   Plus, 
@@ -14,7 +15,9 @@ import {
   Pencil, 
   Trash2,
   Loader2,
-  ArrowLeft
+  ArrowLeft,
+  Pin,
+  PinOff
 } from 'lucide-react'
 
 export function WorkspaceDetail() {
@@ -28,7 +31,10 @@ export function WorkspaceDetail() {
   const [saving, setSaving] = useState(false)
   const [openMenu, setOpenMenu] = useState<number | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
+  const { refreshPinnedBoards, pinnedBoards } = usePinnedBoards()
   const menuRef = useRef<HTMLDivElement>(null)
+  
+  const pinnedBoardIds = pinnedBoards.map(b => b.id)
 
   useEffect(() => {
     loadData()
@@ -92,12 +98,33 @@ export function WorkspaceDetail() {
   const handleDelete = async (id: number) => {
     try {
       await boardsApi.delete(id)
+      // Remover dos fixados se estiver fixado
+      const saved = localStorage.getItem('pinnedBoards')
+      if (saved) {
+        const currentPinned: number[] = JSON.parse(saved)
+        const newPinned = currentPinned.filter(boardId => boardId !== id)
+        localStorage.setItem('pinnedBoards', JSON.stringify(newPinned))
+        await refreshPinnedBoards()
+      }
       await loadData()
     } catch (error) {
       console.error('Erro ao excluir board:', error)
     }
     setOpenMenu(null)
     setDeleteConfirm(null)
+  }
+
+  const handleTogglePin = async (boardId: number) => {
+    const saved = localStorage.getItem('pinnedBoards')
+    const currentPinned: number[] = saved ? JSON.parse(saved) : []
+    const isPinned = currentPinned.includes(boardId)
+    const newPinned = isPinned 
+      ? currentPinned.filter(id => id !== boardId)
+      : [...currentPinned, boardId]
+    localStorage.setItem('pinnedBoards', JSON.stringify(newPinned))
+    // Atualizar contexto
+    await refreshPinnedBoards()
+    setOpenMenu(null)
   }
 
   const openEditModal = (board: Board) => {
@@ -205,7 +232,7 @@ export function WorkspaceDetail() {
                   </button>
 
                   {openMenu === board.id && (
-                    <div className="dropdown fade-in" style={{ right: 0, top: '100%', marginTop: 4 }}>
+                    <div className="dropdown fade-in" style={{ right: 0, top: '100%', marginTop: 4, zIndex: 100 }}>
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -215,6 +242,25 @@ export function WorkspaceDetail() {
                       >
                         <Pencil className="dropdown-item-icon" />
                         Editar
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleTogglePin(board.id)
+                        }}
+                        className="dropdown-item"
+                      >
+                        {pinnedBoardIds.includes(board.id) ? (
+                          <>
+                            <PinOff className="dropdown-item-icon" />
+                            Desfixar
+                          </>
+                        ) : (
+                          <>
+                            <Pin className="dropdown-item-icon" />
+                            Fixar na sidebar
+                          </>
+                        )}
                       </button>
                       <button
                         onClick={(e) => {

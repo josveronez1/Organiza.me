@@ -1,32 +1,23 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import {
-  DndContext,
-  DragOverlay,
-  closestCorners,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragStartEvent,
-  DragEndEvent,
-  DragOverEvent,
-} from '@dnd-kit/core'
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
 import { Layout } from '../components/layout/Layout'
 import { Loading } from '../components/ui/Loading'
 import { EmptyState } from '../components/ui/EmptyState'
-import { KanbanColumn } from '../components/kanban/KanbanColumn'
 import { TaskCard } from '../components/kanban/TaskCard'
 import { TaskModal } from '../components/kanban/TaskModal'
+import { NewTaskModal } from '../components/kanban/NewTaskModal'
+import {
+  Kanban,
+  KanbanBoard,
+  KanbanColumn,
+  KanbanColumnContent,
+  KanbanItem,
+  KanbanOverlay,
+  KanbanMoveEvent,
+} from '../components/kanban/Kanban'
 import { boardsApi, stagesApi, tasksApi } from '../lib/api'
 import { Board, Stage, Task } from '../types'
-import { ArrowLeft, LayoutGrid, Plus, Loader2 } from 'lucide-react'
+import { ArrowLeft, LayoutGrid, Plus, Loader2, MoreHorizontal, Trash2 } from 'lucide-react'
 import { Modal } from '../components/ui/Modal'
 import { ConfirmModal } from '../components/ui/ConfirmModal'
 
@@ -41,29 +32,17 @@ export function BoardKanban() {
   const { boardId } = useParams<{ boardId: string }>()
   const [board, setBoard] = useState<Board | null>(null)
   const [stages, setStages] = useState<Stage[]>([])
-  const [tasksByStage, setTasksByStage] = useState<Record<number, Task[]>>({})
+  const [tasksByStage, setTasksByStage] = useState<Record<string, Task[]>>({})
   const [loading, setLoading] = useState(true)
-  const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false)
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false)
   const [newTaskStageId, setNewTaskStageId] = useState<number | null>(null)
-  const [newTaskTitle, setNewTaskTitle] = useState('')
-  const [savingNewTask, setSavingNewTask] = useState(false)
   const [isNewStageModalOpen, setIsNewStageModalOpen] = useState(false)
   const [newStageName, setNewStageName] = useState('')
   const [newStageColor, setNewStageColor] = useState('#2383E2')
   const [savingNewStage, setSavingNewStage] = useState(false)
   const [deleteStageId, setDeleteStageId] = useState<number | null>(null)
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  )
 
   useEffect(() => {
     loadData()
@@ -79,13 +58,13 @@ export function BoardKanban() {
       ])
       
       setBoard(boardRes.data)
-      setStages(stagesRes.data)
+      setStages(stagesRes.data.sort((a, b) => a.position - b.position))
 
-      const tasksMap: Record<number, Task[]> = {}
+      const tasksMap: Record<string, Task[]> = {}
       await Promise.all(
         stagesRes.data.map(async (stage: Stage) => {
           const tasksRes = await tasksApi.list(stage.id)
-          tasksMap[stage.id] = tasksRes.data
+          tasksMap[String(stage.id)] = tasksRes.data.sort((a, b) => a.position - b.position)
         })
       )
       setTasksByStage(tasksMap)
@@ -96,143 +75,28 @@ export function BoardKanban() {
     }
   }
 
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event
-    const taskId = active.id as number
+  const handleMove = async (event: KanbanMoveEvent) => {
+    const { activeContainer, activeIndex, overContainer, overIndex } = event
     
-    for (const tasks of Object.values(tasksByStage)) {
-      const task = tasks.find(t => t.id === taskId)
-      if (task) {
-        setActiveTask(task)
-        break
-      }
-    }
-  }
-
-  const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event
-    if (!over) return
-
-    const activeId = active.id as number
-    const overId = over.id
-
-    // Find source stage
-    let sourceStageId: number | null = null
-    for (const [stageId, tasks] of Object.entries(tasksByStage)) {
-      if (tasks.find(t => t.id === activeId)) {
-        sourceStageId = Number(stageId)
-        break
-      }
-    }
-
-    // Find target stage and position
-    let targetStageId: number | null = null
-    let targetIndex: number = -1
+    const taskId = Number(event.event.active.id)
+    const newStageId = Number(overContainer)
     
-    if (typeof overId === 'string' && overId.startsWith('stage-')) {
-      // Dropping on empty column
-      targetStageId = Number(overId.replace('stage-', ''))
-      targetIndex = 0
-    } else {
-      // Dropping on another task
-      for (const [stageId, tasks] of Object.entries(tasksByStage)) {
-        const taskIndex = tasks.findIndex(t => t.id === overId)
-        if (taskIndex !== -1) {
-          targetStageId = Number(stageId)
-          targetIndex = taskIndex
-          break
-        }
-      }
-    }
-
-    if (!sourceStageId || !targetStageId) return
-
-    // Moving within same column is handled by SortableContext
-    if (sourceStageId === targetStageId) return
-
-    setTasksByStage(prev => {
-      const sourceTasks = [...(prev[sourceStageId!] || [])]
-      const targetTasks = [...(prev[targetStageId!] || [])]
-      
-      const taskIndex = sourceTasks.findIndex(t => t.id === activeId)
-      if (taskIndex === -1) return prev
-
-      const [task] = sourceTasks.splice(taskIndex, 1)
-      
-      // Insert at the target position instead of appending
-      if (targetIndex === -1 || targetIndex >= targetTasks.length) {
-        targetTasks.push({ ...task, stage_id: targetStageId! })
-      } else {
-        targetTasks.splice(targetIndex, 0, { ...task, stage_id: targetStageId! })
-      }
-
-      return {
-        ...prev,
-        [sourceStageId!]: sourceTasks,
-        [targetStageId!]: targetTasks,
-      }
-    })
-  }
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event
-    setActiveTask(null)
-
-    if (!over) return
-
-    const activeId = active.id as number
-    const overId = over.id
-
-    // Find current stage and tasks for the active item
-    let stageId: number | null = null
-    let tasks: Task[] = []
+    // Salvar estado atual para possível rollback
+    const previousState = { ...tasksByStage }
     
-    for (const [sid, stageTasks] of Object.entries(tasksByStage)) {
-      if (stageTasks.find(t => t.id === activeId)) {
-        stageId = Number(sid)
-        tasks = [...stageTasks]
-        break
-      }
-    }
-
-    if (!stageId) return
-
-    // Handle reordering within the same column
-    if (typeof overId === 'number' && activeId !== overId) {
-      const oldIndex = tasks.findIndex(t => t.id === activeId)
-      const newIndex = tasks.findIndex(t => t.id === overId)
-
-      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-        const newTasks = arrayMove(tasks, oldIndex, newIndex)
-        setTasksByStage(prev => ({
-          ...prev,
-          [stageId!]: newTasks,
-        }))
-
-        try {
-          await tasksApi.move(activeId, {
-            stage_id: stageId,
-            position: newIndex,
-          })
-        } catch (error) {
-          console.error('Erro ao mover task:', error)
-          loadData()
-        }
-      }
-    } else {
-      // Task moved to a different column (already handled in dragOver)
-      // Just persist the final position
-      const finalIndex = tasks.findIndex(t => t.id === activeId)
-      
-      try {
-        await tasksApi.move(activeId, {
-          stage_id: stageId,
-          position: finalIndex >= 0 ? finalIndex : 0,
-        })
-      } catch (error) {
-        console.error('Erro ao mover task:', error)
-        loadData()
-      }
+    // Fazer requisição ao backend em background
+    // O estado já foi atualizado otimisticamente via onValueChange
+    try {
+      await tasksApi.move(taskId, {
+        stage_id: newStageId,
+        position: overIndex,
+      })
+    } catch (error) {
+      console.error('Erro ao mover task:', error)
+      // Reverter para estado anterior em caso de erro
+      setTasksByStage(previousState)
+      // Recarregar dados do servidor para garantir sincronização
+      await loadData()
     }
   }
 
@@ -243,28 +107,22 @@ export function BoardKanban() {
 
   const handleNewTask = (stageId: number) => {
     setNewTaskStageId(stageId)
-    setNewTaskTitle('')
     setIsNewTaskModalOpen(true)
   }
 
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newTaskStageId || !newTaskTitle.trim()) return
-
-    setSavingNewTask(true)
+  const handleCreateTask = async (taskData: { title: string; description?: string; stage_id: number; position: number; start_date?: string; due_date?: string }) => {
     try {
-      const tasks = tasksByStage[newTaskStageId] || []
-      await tasksApi.create({
-        title: newTaskTitle.trim(),
-        stage_id: newTaskStageId,
+      const tasks = tasksByStage[String(taskData.stage_id)] || []
+      const response = await tasksApi.create({
+        ...taskData,
         position: tasks.length,
       })
+      // Recarregar dados para ter o ID da task criada
       await loadData()
       setIsNewTaskModalOpen(false)
+      setNewTaskStageId(null)
     } catch (error) {
       console.error('Erro ao criar task:', error)
-    } finally {
-      setSavingNewTask(false)
     }
   }
 
@@ -324,7 +182,7 @@ export function BoardKanban() {
         <div className="page-container">
           <EmptyState
             icon={<LayoutGrid size={32} />}
-            title="Board nao encontrado"
+            title="Board não encontrado"
             action={<Link to="/" className="btn btn-primary">Voltar</Link>}
           />
         </div>
@@ -346,70 +204,74 @@ export function BoardKanban() {
         </div>
 
         {/* Kanban Board */}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
+        <Kanban
+          value={tasksByStage}
+          onValueChange={(newValue) => {
+            // Update otimista - atualizar imediatamente durante o drag
+            setTasksByStage(newValue)
+          }}
+          getItemValue={(task) => String(task.id)}
+          onMove={handleMove}
         >
-          <div className="kanban">
-            {stages.map((stage, index) => (
-              <KanbanColumn
-                key={stage.id}
-                stage={stage}
-                stageName={formatStageName(stage.name)}
-                tasks={tasksByStage[stage.id] || []}
-                color={stage.color || stageColors[index % stageColors.length]}
-                onTaskClick={handleTaskClick}
-                onAddTask={() => handleNewTask(stage.id)}
-                onDeleteStage={() => setDeleteStageId(stage.id)}
-              />
-            ))}
+          <KanbanBoard>
+            {stages.map((stage, index) => {
+              const stageId = String(stage.id)
+              const tasks = tasksByStage[stageId] || []
+              const color = stage.color || stageColors[index % stageColors.length]
+              
+              return (
+                <StageColumn
+                  key={stage.id}
+                  stage={stage}
+                  stageName={formatStageName(stage.name)}
+                  tasks={tasks}
+                  color={color}
+                  onTaskClick={handleTaskClick}
+                  onAddTask={() => handleNewTask(stage.id)}
+                  onDeleteStage={() => setDeleteStageId(stage.id)}
+                />
+              )
+            })}
 
-            {/* Add Column - Single button, positioned as last column */}
+            {/* Add Column */}
             <button onClick={() => setIsNewStageModalOpen(true)} className="kanban-add-column">
               <Plus size={20} />
               <span>Nova Coluna</span>
             </button>
-          </div>
+          </KanbanBoard>
 
-          <DragOverlay>
-            {activeTask ? <TaskCard task={activeTask} isDragging /> : null}
-          </DragOverlay>
-        </DndContext>
+          <KanbanOverlay>
+            {({ value, variant }) => {
+              if (variant === 'item') {
+                const taskId = Number(value)
+                // Find task in any stage
+                for (const tasks of Object.values(tasksByStage)) {
+                  const task = tasks.find(t => t.id === taskId)
+                  if (task) {
+                    return <TaskCard task={task} isDragging />
+                  }
+                }
+              }
+              return null
+            }}
+          </KanbanOverlay>
+        </Kanban>
       </div>
 
-      {/* New Task Modal */}
-      <Modal
-        isOpen={isNewTaskModalOpen}
-        onClose={() => setIsNewTaskModalOpen(false)}
-        title="Nova Tarefa"
-      >
-        <form onSubmit={handleCreateTask}>
-          <div style={{ marginBottom: 24 }}>
-            <label className="input-label">Titulo</label>
-            <input
-              type="text"
-              value={newTaskTitle}
-              onChange={(e) => setNewTaskTitle(e.target.value)}
-              className="input"
-              placeholder="O que precisa ser feito?"
-              required
-              autoFocus
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={() => setIsNewTaskModalOpen(false)} className="btn btn-secondary">
-              Cancelar
-            </button>
-            <button type="submit" disabled={savingNewTask} className="btn btn-primary">
-              {savingNewTask ? <Loader2 size={16} className="spinner" /> : 'Criar'}
-            </button>
-          </div>
-        </form>
-      </Modal>
+      {/* New Task Modal - Using TaskModal for full experience */}
+      {isNewTaskModalOpen && newTaskStageId && (
+        <NewTaskModal
+          isOpen={isNewTaskModalOpen}
+          onClose={() => {
+            setIsNewTaskModalOpen(false)
+            setNewTaskStageId(null)
+          }}
+          stageId={newTaskStageId}
+          workspaceId={board.workspace_id}
+          onCreate={handleCreateTask}
+          onUpdate={handleTaskUpdate}
+        />
+      )}
 
       {/* New Stage Modal */}
       <Modal
@@ -425,7 +287,7 @@ export function BoardKanban() {
               value={newStageName}
               onChange={(e) => setNewStageName(e.target.value)}
               className="input"
-              placeholder="Ex: Em Revisao, Bloqueado..."
+              placeholder="Ex: Em Revisão, Bloqueado..."
               required
               autoFocus
             />
@@ -477,10 +339,127 @@ export function BoardKanban() {
         onClose={() => setDeleteStageId(null)}
         onConfirm={() => deleteStageId && handleDeleteStage(deleteStageId)}
         title="Excluir coluna"
-        message="Tem certeza que deseja excluir esta coluna? Todas as tarefas dentro dela serao perdidas."
+        message="Tem certeza que deseja excluir esta coluna? Todas as tarefas dentro dela serão perdidas."
         confirmText="Excluir"
         variant="danger"
       />
     </Layout>
+  )
+}
+
+// Stage Column Component using new Kanban structure
+interface StageColumnProps {
+  stage: Stage
+  stageName: string
+  tasks: Task[]
+  color: string
+  onTaskClick: (task: Task) => void
+  onAddTask: () => void
+  onDeleteStage: () => void
+}
+
+function StageColumn({ stage, stageName, tasks, color, onTaskClick, onAddTask, onDeleteStage }: StageColumnProps) {
+  const [showMenu, setShowMenu] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const stageId = String(stage.id)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false)
+      }
+    }
+    
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showMenu])
+
+  return (
+    <KanbanColumn
+      value={stageId}
+      className="kanban-column"
+    >
+      {/* Column Header */}
+      <div className="kanban-column-header">
+        <div className="kanban-column-title">
+          <div 
+            style={{ 
+              width: 8, 
+              height: 8, 
+              borderRadius: '50%', 
+              backgroundColor: color 
+            }} 
+          />
+          <span className="kanban-column-name">{stageName}</span>
+          <span className="kanban-column-count">{tasks.length}</span>
+        </div>
+        
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {/* Add Task Button */}
+          <button
+            onClick={onAddTask}
+            className="btn btn-ghost btn-icon-sm"
+            title="Adicionar tarefa"
+          >
+            <Plus size={16} />
+          </button>
+
+          {/* Menu */}
+          <div style={{ position: 'relative' }} ref={menuRef}>
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="btn btn-ghost btn-icon-sm"
+            >
+              <MoreHorizontal size={16} />
+            </button>
+
+            {showMenu && (
+              <div className="dropdown fade-in" style={{ right: 0, top: '100%', marginTop: 4 }}>
+                <button
+                  onClick={() => {
+                    setShowMenu(false)
+                    onDeleteStage()
+                  }}
+                  className="dropdown-item dropdown-item-danger"
+                >
+                  <Trash2 className="dropdown-item-icon" />
+                  Excluir coluna
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Tasks Container */}
+      <div>
+        <KanbanColumnContent value={stageId}>
+          {tasks.map((task) => (
+            <KanbanItem key={task.id} value={String(task.id)} className="task-card-wrapper">
+              <TaskCard 
+                task={task} 
+                onClick={() => onTaskClick(task)}
+              />
+            </KanbanItem>
+          ))}
+
+          {tasks.length === 0 && (
+            <div className="kanban-empty">
+              Arraste tarefas aqui
+            </div>
+          )}
+        </KanbanColumnContent>
+      </div>
+
+      {/* Footer - Secondary add button */}
+      <div className="kanban-column-footer">
+        <button onClick={onAddTask} className="kanban-add-task">
+          <Plus size={14} />
+          Adicionar tarefa
+        </button>
+      </div>
+    </KanbanColumn>
   )
 }

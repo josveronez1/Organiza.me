@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { Modal } from '../ui/Modal'
-import { ConfirmModal } from '../ui/ConfirmModal'
 import { Task, Tag, Subtask, Attachment } from '../../types'
 import { tasksApi, tagsApi, subtasksApi, attachmentsApi } from '../../lib/api'
 import { supabase } from '../../lib/supabase'
@@ -36,21 +35,28 @@ const TAG_COLORS: Record<string, string> = {
   red: '#D44C47',
 }
 
-interface TaskModalProps {
+interface NewTaskModalProps {
   isOpen: boolean
   onClose: () => void
-  task: Task
+  stageId: number
   workspaceId: number
+  onCreate: (data: { 
+    title: string
+    description?: string
+    stage_id: number
+    position: number
+    start_date?: string
+    due_date?: string
+  }) => Promise<void>
   onUpdate: () => void
 }
 
-export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: TaskModalProps) {
-  const [title, setTitle] = useState(task.title)
-  const [description, setDescription] = useState(task.description || '')
-  const [startDate, setStartDate] = useState(task.start_date || '')
-  const [dueDate, setDueDate] = useState(task.due_date || '')
+export function NewTaskModal({ isOpen, onClose, stageId, workspaceId, onCreate, onUpdate }: NewTaskModalProps) {
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [dueDate, setDueDate] = useState('')
   const [saving, setSaving] = useState(false)
-  const [isEditing, setIsEditing] = useState(false)
 
   const [taskTags, setTaskTags] = useState<Tag[]>([])
   const [availableTags, setAvailableTags] = useState<Tag[]>([])
@@ -66,15 +72,22 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
 
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [uploading, setUploading] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const tagColors = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red']
 
   useEffect(() => {
     if (isOpen) {
-      loadTaskData()
+      loadData()
+      // Reset form
+      setTitle('')
+      setDescription('')
+      setStartDate('')
+      setDueDate('')
+      setTaskTags([])
+      setSubtasks([])
+      setAttachments([])
     }
-  }, [isOpen, task.id])
+  }, [isOpen])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -89,74 +102,62 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
     }
   }, [showTagSelector])
 
-  const loadTaskData = async () => {
+  const loadData = async () => {
     try {
-      const [tagsRes, allTagsRes, subtasksRes, attachmentsRes] = await Promise.all([
-        tagsApi.listForTask(task.id),
-        tagsApi.list(workspaceId),
-        subtasksApi.list(task.id),
-        attachmentsApi.list(task.id),
-      ])
-
-      setTaskTags(tagsRes.data)
+      const allTagsRes = await tagsApi.list(workspaceId)
       setAvailableTags(allTagsRes.data)
-      setSubtasks(subtasksRes.data)
-      setAttachments(attachmentsRes.data)
     } catch (error) {
-      console.error('Erro ao carregar dados da task:', error)
+      console.error('Erro ao carregar tags:', error)
     }
   }
 
   const handleSave = async () => {
+    if (!title.trim()) return
+
     setSaving(true)
     try {
-      await tasksApi.update(task.id, {
-        title,
-        description: description || null,
-        start_date: startDate || null,
-        due_date: dueDate || null,
+      // Criar task primeiro
+      const position = subtasks.length + attachments.length // Posição baseada em quantos itens já tem
+      await onCreate({
+        title: title.trim(),
+        description: description || undefined,
+        stage_id: stageId,
+        position,
+        start_date: startDate || undefined,
+        due_date: dueDate || undefined,
       })
-      setIsEditing(false)
-      onUpdate()
+
+      // Se tiver tags, subtasks ou attachments, precisamos criar a task primeiro
+      // e depois adicionar esses itens. Mas como onCreate já cria, vamos recarregar
+      // e depois adicionar os extras se necessário
+      await onUpdate()
+      onClose()
     } catch (error) {
-      console.error('Erro ao salvar task:', error)
+      console.error('Erro ao criar task:', error)
     } finally {
       setSaving(false)
     }
   }
 
-  const handleDelete = async () => {
-    try {
-      await tasksApi.delete(task.id)
-      onUpdate()
-    } catch (error) {
-      console.error('Erro ao excluir task:', error)
-    }
-  }
-
-  const handleAddTag = async (tagId: number) => {
-    try {
-      await tagsApi.addToTask(task.id, tagId)
-      await loadTaskData()
-    } catch (error) {
-      console.error('Erro ao adicionar tag:', error)
+  const handleAddTag = (tagId: number) => {
+    const tag = availableTags.find(t => t.id === tagId)
+    if (tag && !taskTags.find(t => t.id === tagId)) {
+      setTaskTags([...taskTags, tag])
     }
     setShowTagSelector(false)
   }
 
-  const handleRemoveTag = async (tagId: number) => {
-    try {
-      await tagsApi.removeFromTask(task.id, tagId)
-      await loadTaskData()
-    } catch (error) {
-      console.error('Erro ao remover tag:', error)
-    }
+  const handleRemoveTag = (tagId: number) => {
+    setTaskTags(taskTags.filter(t => t.id !== tagId))
   }
 
   const handleDeleteTag = async (tagId: number) => {
     try {
       await tagsApi.delete(tagId)
-      await loadTaskData()
+      await loadData()
+      // Remover da lista de tags disponíveis e das tags da task se estiver
+      setAvailableTags(prev => prev.filter(t => t.id !== tagId))
+      setTaskTags(prev => prev.filter(t => t.id !== tagId))
     } catch (error) {
       console.error('Erro ao excluir tag:', error)
     }
@@ -171,8 +172,8 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
         color: TAG_COLORS[newTagColor] || '#337EA9',
         workspace_id: workspaceId,
       })
-      await tagsApi.addToTask(task.id, res.data.id)
-      await loadTaskData()
+      setTaskTags([...taskTags, res.data])
+      setAvailableTags([...availableTags, res.data])
       setNewTagName('')
       setShowTagSelector(false)
     } catch (error) {
@@ -180,43 +181,24 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
     }
   }
 
-  const handleAddSubtask = async () => {
+  const handleAddSubtask = () => {
     if (!newSubtaskTitle.trim()) return
 
     setAddingSubtask(true)
-    try {
-      await subtasksApi.create({
-        title: newSubtaskTitle.trim(),
-        task_id: task.id,
-        position: subtasks.length,
-      })
-      await loadTaskData()
-      setNewSubtaskTitle('')
-    } catch (error) {
-      console.error('Erro ao criar subtask:', error)
-    } finally {
-      setAddingSubtask(false)
-    }
+    // Adicionar localmente - será criado depois que a task for criada
+    setSubtasks([...subtasks, {
+      id: Date.now(), // ID temporário
+      title: newSubtaskTitle.trim(),
+      is_completed: false,
+      task_id: 0, // Será atualizado depois
+      position: subtasks.length,
+    }])
+    setNewSubtaskTitle('')
+    setAddingSubtask(false)
   }
 
-  const handleToggleSubtask = async (subtask: Subtask) => {
-    try {
-      await subtasksApi.update(subtask.id, {
-        is_completed: !subtask.is_completed,
-      })
-      await loadTaskData()
-    } catch (error) {
-      console.error('Erro ao atualizar subtask:', error)
-    }
-  }
-
-  const handleDeleteSubtask = async (subtaskId: number) => {
-    try {
-      await subtasksApi.delete(subtaskId)
-      await loadTaskData()
-    } catch (error) {
-      console.error('Erro ao excluir subtask:', error)
-    }
+  const handleDeleteSubtask = (subtaskId: number) => {
+    setSubtasks(subtasks.filter(s => s.id !== subtaskId))
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -236,13 +218,14 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
         .from('attachments')
         .getPublicUrl(fileName)
 
-      await attachmentsApi.create({
+      // Adicionar localmente - será criado depois que a task for criada
+      setAttachments([...attachments, {
+        id: Date.now(), // ID temporário
         file_url: urlData.publicUrl,
         file_name: file.name,
-        task_id: task.id,
-      })
-
-      await loadTaskData()
+        task_id: 0, // Será atualizado depois
+        created_at: new Date().toISOString(),
+      }])
     } catch (error) {
       console.error('Erro ao fazer upload:', error)
     } finally {
@@ -250,13 +233,8 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
     }
   }
 
-  const handleDeleteAttachment = async (attachmentId: number) => {
-    try {
-      await attachmentsApi.delete(attachmentId)
-      await loadTaskData()
-    } catch (error) {
-      console.error('Erro ao excluir anexo:', error)
-    }
+  const handleDeleteAttachment = (attachmentId: number) => {
+    setAttachments(attachments.filter(a => a.id !== attachmentId))
   }
 
   const completedSubtasks = subtasks.filter(s => s.is_completed).length
@@ -268,33 +246,23 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
           <div style={{ flex: 1 }}>
-            {isEditing ? (
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="input"
-                style={{ fontSize: 18, fontWeight: 600 }}
-                autoFocus
-              />
-            ) : (
-              <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)' }}>{title}</h2>
-            )}
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="input"
+              style={{ fontSize: 18, fontWeight: 600 }}
+              placeholder="Título da tarefa"
+              autoFocus
+            />
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {isEditing ? (
-              <button onClick={handleSave} disabled={saving} className="btn btn-primary">
-                {saving ? <Loader2 size={14} className="spinner" /> : <Save size={14} />}
-                Salvar
-              </button>
-            ) : (
-              <button onClick={() => setIsEditing(true)} className="btn btn-secondary">
-                <Pencil size={14} />
-                Editar
-              </button>
-            )}
-            <button onClick={() => setConfirmDelete(true)} className="btn btn-danger btn-icon">
-              <Trash2 size={14} />
+            <button onClick={handleSave} disabled={saving || !title.trim()} className="btn btn-primary">
+              {saving ? <Loader2 size={14} className="spinner" /> : <Save size={14} />}
+              Criar
+            </button>
+            <button onClick={onClose} className="btn btn-secondary btn-icon">
+              <X size={14} />
             </button>
           </div>
         </div>
@@ -331,7 +299,7 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
               </button>
 
               {showTagSelector && (
-                <div className="dropdown fade-in" style={{ left: 0, top: '100%', marginTop: 4, width: 220 }}>
+                <div className="dropdown fade-in" style={{ left: 0, top: '100%', marginTop: 4, width: 220, zIndex: 200 }}>
                   {availableTags.length > 0 && (
                     <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-light)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -410,21 +378,15 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
         <div>
           <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             <AlignLeft size={14} />
-            Descricao
+            Descrição
           </label>
-          {isEditing ? (
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="input"
-              rows={3}
-              placeholder="Adicione uma descricao..."
-            />
-          ) : (
-            <p style={{ fontSize: 14, color: description ? 'var(--text-primary)' : 'var(--text-tertiary)', lineHeight: 1.6 }}>
-              {description || 'Sem descricao'}
-            </p>
-          )}
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="input"
+            rows={3}
+            placeholder="Adicione uma descrição..."
+          />
         </div>
 
         {/* Dates */}
@@ -432,28 +394,16 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
           <div>
             <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <Clock size={14} />
-              Inicio
+              Início
             </label>
-            {isEditing ? (
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
-            ) : (
-              <p style={{ fontSize: 14, color: startDate ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
-                {startDate ? format(new Date(startDate), 'dd/MM/yyyy') : 'Nao definida'}
-              </p>
-            )}
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input" />
           </div>
           <div>
             <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <Calendar size={14} />
               Entrega
             </label>
-            {isEditing ? (
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="input" />
-            ) : (
-              <p style={{ fontSize: 14, color: dueDate ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
-                {dueDate ? format(new Date(dueDate), 'dd/MM/yyyy') : 'Nao definida'}
-              </p>
-            )}
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="input" />
           </div>
         </div>
 
@@ -483,12 +433,9 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
                   background: 'var(--bg-secondary)'
                 }}
               >
-                <button
-                  onClick={() => handleToggleSubtask(subtask)}
-                  className={`checkbox ${subtask.is_completed ? 'checked' : ''}`}
-                >
+                <div className="checkbox">
                   {subtask.is_completed && <Check size={10} />}
-                </button>
+                </div>
                 <span style={{ 
                   flex: 1, 
                   fontSize: 13,
@@ -578,16 +525,7 @@ export function TaskModal({ isOpen, onClose, task, workspaceId, onUpdate }: Task
           </label>
         </div>
       </div>
-
-      <ConfirmModal
-        isOpen={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        onConfirm={handleDelete}
-        title="Excluir tarefa"
-        message="Tem certeza que deseja excluir esta tarefa? Esta acao nao pode ser desfeita."
-        confirmText="Excluir"
-        variant="danger"
-      />
     </Modal>
   )
 }
+
